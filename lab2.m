@@ -24,28 +24,30 @@ for i=1:length(ns)
 end
 
 probabilities = [0.5 0.2 0.1 0.05 0.02 0.01 0.005 0.002 0.001 5e-4 2e-4 1e-4];
-N = 1e6;
-for i=1:length(gs)
+probabilities_biterr = zeros(size(ns, 2), size(probabilities, 2));
+N = 1e5;
+for i=1:length(polygs)
     L = floor(N/ks(i));
-    u = randi([0 1], ks(i), L);
-    v = coder(gs(i), u);
-    for l=length(probabilities)
-        err = error(ns(i), size(u, 1), probabilities(l));
-        base_synd = error(ns(i), 1, -1);
+    u = randi([0 1], L, ks(i));
+    v = coder(polygs(i), u);
+    for l=1:length(probabilities)
+        err = rand(size(u, 1), ns(i)) < probabilities(l);
+        base_synd = decoder(error_first(ns(i), 1, -1), polygs(i));
         r = mod(v + err, 2);
-        s = decoder(r, gs(i));
+        s = decoder(r, polygs(i));
         for m=1:size(r, 1)
-            if s(m, :) ~= 0
+            if any(s(m, :))
                 rotations = 0;
-                while ~equal_base_synd(s(m, :), base_synd)
+                while ~equal_base_synd(s(m, :), base_synd) && rotations < ns(i)
                     r(m, :) = circshift(r(m, :), 1);
-                    s(m, :) = decoder(r(m, :), gs(i));
-                    rotations = rotations+1;
+                    s(m, :) = decoder(r(m, :), polygs(i));
+                    rotations = rotations + 1;
                 end
-                r(m, 1) = ~r(m, :);
+                r(m, 1) = ~r(m, 1);
                 r(m, :) = circshift(r(m, :), -rotations);
             end
         end
+        probabilities_biterr(i, l) = double(1 - sum(r == v, 'all')/numel(r));
     end
 end
 
@@ -53,7 +55,7 @@ function v = coder(g_cell, u)
     g = cell2mat(g_cell);
     v = zeros(size(u, 1), size(u, 2) + size(g, 2) - 1);
     for i=1:size(u, 1)
-        v(i, :) = conv(g, u(i, :));
+        v(i, :) = mod(conv(g, u(i, :)), 2);
     end
 end
 
@@ -61,18 +63,18 @@ function s = decoder(r, g_cell)
     g = cell2mat(g_cell);
     s = [];
     for i=1:size(r, 1)
-        [~, synd] = deconv(r(i), g);
+        [~, synd] = deconv(r(i, :), g);
         s(i, :) = mod(synd, 2);
     end
 end
 
-function e = error(n, k2, p)
+function e = error_first(n, k2, p)
     e = zeros(k2, n);
     e(:, 1) = rand(k2, 1) > p;
 end
 
 function val = equal_base_synd(synd, base_synd)
-    val = (synd == base_synd);
+    val = all(synd == base_synd);
 end
 
 % item 3:
